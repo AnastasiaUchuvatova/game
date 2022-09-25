@@ -8,143 +8,227 @@ RSC = {
         'icon': 'resources/img/ufo.png',
         'player': 'resources/img/player.png',
         'enemy': 'resources/img/enemy.png',
-        'bullet': 'resources/img/bullet.png'
+        'bullet': 'resources/img/bullet.png',
+        'life': 'resources/img/life.png',
     },
     'sound': {
     }
 }
 
-FPS = 24
-
-
-class Enemy:
-    Y_START_POSITION = 30
-
-    def __init__(self, bound_size):
-        self.display_width, self.display_height = bound_size
-        self.bound_rect = pygame.Rect(0, 0, self.display_width, self.display_height)
-
-        self.img = pygame.image.load(RSC['img']['enemy'])
-        self.width = self.img.get_width()
-        self.height = self.img.get_height()
-
-        self.x = random.randint(0, self.display_width)
-        self.y = self.Y_START_POSITION
-        self.dx = random.randint(-2, 3) / 10
-        self.dy = random.randint(1, 3) / 10
-
-    def model_update(self):
-        # return in_bounds status
-        self.x += self.dx
-        self.y += self.dy
-        return self.bound_rect.contains(self.x, self.y, self.width, self.height)
-
-    def redraw(self, display):
-        display.blit(self.img, (self.x, self.y))
-
-    def event_process(self, event):
-        pass
-
 
 class Player:
-    GAP = 10  # расстояние до низа экрана
-    SPEED = 0.5
+    YGAP = 10
+    SPEED = 3
 
-    def __init__(self, bound_size):
-        self.display_width, self.display_height = bound_size
-
+    def __init__(self, display_size):
+        self.bound_size = self.bound_width, self.bound_height = display_size
         self.img = pygame.image.load(RSC['img']['player'])
+        self.life_img = pygame.image.load(RSC['img']['life'])
+        self.life_width = self.life_img.get_width()
+        self.life_height = self.life_img.get_height()
         self.width = self.img.get_width()
         self.height = self.img.get_height()
-
-        self.x = self.display_width // 2 - self.width // 2
-        self.y = self.display_height - self.height - self.GAP
+        self.x = self.bound_width // 2 - self.width // 2
+        self.y = self.bound_height - self.height - self.YGAP
         self.dx = 0
+        self.life_quantity = 3
 
     def model_update(self):
         self.x += self.dx
         # не дадим игроку выходить за пределы окна
         if self.x < 0:
             self.x = 0
-        if self.x > self.display_width - self.width:
-            self.x = self.display_width - self.width
+        if self.x > self.bound_width - self.width:
+            self.x = self.bound_width - self.width
+
+    def redraw(self, display):
+        display.blit(self.img, (self.x, self.y))
+        self.life_update(display)
+
+    def event_process(self, event):
+        # нажали клавишу
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT:
+                self.dx = -self.SPEED
+            elif event.key == pygame.K_RIGHT:
+                self.dx = self.SPEED
+        # отпустили клавишу
+        if event.type == pygame.KEYUP:
+            self.dx = 0
+
+    def rect(self):
+        return self.x, self.y, self.width, self.height
+
+    def life_update(self, display):
+        if self.life_quantity != 0:
+            for i in range(1, self.life_quantity + 1):
+                display.blit(self.life_img, (self.bound_width - i * (self.life_width + 5), 5))
+        else:
+            restart_font = pygame.font.SysFont('None', 32)
+            restart_surface = restart_font.render("Press space to restart", True, (255, 0, 0))
+            restart_rect = restart_surface.get_rect(center=(self.bound_width / 2, self.bound_height / 2))
+            display.blit(restart_surface, restart_rect)
+
+
+class Enemy:
+    DEFAULT_DX = 0
+    DEFAULT_DY = 0.1
+    DEFAULT_Y = 30
+
+    def __init__(self, display_size):
+        self.bound_size = self.bound_width, self.bound_height = display_size
+        self.img = pygame.image.load(RSC['img']['enemy'])
+        self.width = self.img.get_width()
+        self.height = self.img.get_height()
+        self.x, self.y, self.dx, self.dy = self.create_at_random_position()
+        # self.x, self.y, self.dx, self.dy = self.create_at_center()
+
+    def create_at_center(self):
+        x = self.bound_width // 2 - self.width // 2
+        y = self.DEFAULT_Y
+        dx = self.DEFAULT_DX
+        dy = self.DEFAULT_DY
+        return x, y, dx, dy
+
+    def create_at_random_position(self):
+        x = random.randint(0, self.bound_width)
+        y = self.DEFAULT_Y
+        dx = random.randint(-2, 3) #/ 10
+        dy = random.randint(1, 3) #/ 20
+        return x, y, dx, dy
+
+    def model_update(self):
+        self.x += self.dx
+        self.y += self.dy
+
+    def into_bounds(self):
+        bound = pygame.Rect(0, 0, self.bound_width, self.bound_height)
+        return bound.contains(self.x, self.y, self.width, self.height)
 
     def redraw(self, display):
         display.blit(self.img, (self.x, self.y))
 
-    def event_process(self, event):
-        # нажали клавишу - поехали
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT:
-                self.dx = -Player.SPEED
-            elif event.key == pygame.K_RIGHT:
-                self.dx = Player.SPEED
-        # отпустили клавишу - остановились
-        if event.type == pygame.KEYUP:
-            self.dx = 0
+    def collision_enemy_with_player(self, rect_player):
+        rect_enemy = pygame.Rect(self.x, self.y, self.width, self.height)
+        return rect_enemy.colliderect(rect_player)
+
+    def collision_enemy_with_bullet(self, rect_bullet):
+        rect_enemy = pygame.Rect(self.x, self.y, self.width, self.height)
+        return rect_enemy.colliderect(rect_bullet)
+
+
+class Bullet:
+    DEFAULT_DY = -10
+
+    def __init__(self, display_size, player_rect):
+        self.bound_size = self.bound_width, self.bound_height = display_size
+
+        player_x, player_y, player_width, player_height = player_rect
+        self.img = pygame.image.load(RSC['img']['bullet'])
+        self.width = self.img.get_width()
+        self.height = self.img.get_height()
+        self.x = player_x + player_width // 2 - self.width // 2
+        self.y = player_y - self.height
+        self.dy = self.DEFAULT_DY
+
+    def model_update(self):
+        self.y += self.dy
+
+    def into_bounds(self):
+        bound = pygame.Rect(0, 0, self.bound_width, self.bound_height)
+        return bound.contains(self.x, self.y, self.width, self.height)
+
+    def redraw(self, display):
+        display.blit(self.img, (self.x, self.y))
+
+    def rect(self):
+        return self.x, self.y, self.width, self.height
+
+    @classmethod
+    def event_process(cls, event):
+        """ Return True, if press FIRE!!! button. """
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            key = pygame.mouse.get_pressed()
+            if key[0]:
+                return True
+        return False
 
 
 class Game:
     def __init__(self, size):
-        self.width, self.height = size
-        self.rect = (0, 0, self.width, self.height)
-
+        self.size = size
         self.player = Player(size)
         self.enemy = None
+        self.bullet = None
 
     def model_update(self):
         self.player.model_update()
-        if self.enemy:
-            if not self.enemy.model_update():
-                # вылетел за границы
-                self.enemy = None
-        else:
-            self.enemy = Enemy((self.width, self.height))
 
-    def redraw(self, display):
-        display.fill((0, 0, 0), self.rect)
+        if self.enemy != None and self.enemy.collision_enemy_with_player(self.player.rect()):
+            self.player.life_quantity -= 1
+            self.enemy = None
+
+        if self.bullet != None and self.enemy.collision_enemy_with_bullet(self.bullet.rect()):
+            self.enemy = None
+            self.bullet = None
+
+
+        if self.enemy is None:
+            self.enemy = Enemy(self.size)
+        self.enemy.model_update()
+        if not self.enemy.into_bounds():       # если вышли за границу
+            self.enemy = None
+
+        if self.bullet:
+            self.bullet.model_update()
+            if not self.bullet.into_bounds():       # если вышли за границу
+                self.bullet = None
+
+    def redraw(self, display, size):
+        width, height = size
+        #display.fill((0, 0, 0), (0, 0, width, height))
+        display.blit(pygame.image.load(RSC['img']['background']), (0, 0, width, height))
         self.player.redraw(display)
         if self.enemy:
             self.enemy.redraw(display)
+        if self.bullet:
+            self.bullet.redraw(display)
+
 
         pygame.display.update()
 
     def event_process(self, event):
         self.player.event_process(event)
+        # обрабатываю события (пули может еще не быть, поэтому Bullet. метод не объекта, а класса)
+        # может вернуть созданную пулю, если так, то ее сохраняем в self.bullet
+        fire = Bullet.event_process(event)
+        if fire and not self.bullet:
+            self.bullet = Bullet(self.size, self.player.rect())
 
 
 class Application:
     def __init__(self):
+        random.seed(10)    # убрать во время релиза
         pygame.init()
-        random.seed(10)
-
-        self.width = 800
-        self.height = 600
-        self.size = (self.width, self.height)
-
+        # self.width = 800
+        # self.height = 600
+        # tuple
+        self.size = (self.width, self.height) = (800, 600)
         self.display = pygame.display.set_mode(self.size)
         pygame.display.set_caption(RSC['title'])
-        pygame.display.set_icon(pygame.image.load(RSC['img']['icon']))
-
-        self.running = False
+        icon_img = pygame.image.load(RSC['img']['icon'])
+        pygame.display.set_icon(icon_img)
 
     def run(self):
-        # приложение уже запущено
-        if self.running:
-            return
-        self.running = True
-        clock = pygame.time.Clock()
-
+        running = True
         game = Game(self.size)
-
-        while self.running:
+        while running:
             game.model_update()
-            game.redraw(self.display)
+            game.redraw(self.display, self.size)
             for event in pygame.event.get():
                 if self.event_close_application(event):
-                    self.running = False
+                    running = False
                 game.event_process(event)
-                clock.tick(FPS)
 
     def event_close_application(self, event):
         return event.type == pygame.QUIT
